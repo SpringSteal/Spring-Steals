@@ -509,8 +509,16 @@ export default function Page() {
           }}
         >
           No deals match your filters.
-        </div>
-      ) : (
-        <div
-          style={{
+                </div>
+      )}
+
+      <footer style={{ marginTop: 24, fontSize: 12, color: "#6b7280" }}>
+        <p>
+          <b>Heads up:</b> Some sample data shown. We’re connecting live retailer feeds next.
+        </p>
+      </footer>
+    </div>
+  );
+}
+
            
