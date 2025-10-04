@@ -65,15 +65,15 @@ function Card({ deal }: { deal: Deal }) {
     ? Math.max(0, Math.ceil((new Date(deal.endsAt).getTime() - now.getTime()) / 86_400_000))
     : "—";
 
-  // Image source:
-  // 1) use deal.image if present
-  // 2) else fetch og:image from the product URL via our API proxy
-  const derivedImg =
-    deal.image && deal.image.trim().length > 0
-      ? deal.image
-      : deal.url
-      ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
-      : "";
+  // Image source — prefer deal.image, fallback to retailer logo or OG image
+const derivedImg =
+  deal.image && deal.image.trim().length > 0
+    ? deal.image
+    : retailerLogo(deal.retailer)
+    ? retailerLogo(deal.retailer)
+    : deal.url
+    ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
+    : "/placeholder.png";
 
   return (
     <div
