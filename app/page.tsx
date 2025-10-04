@@ -57,6 +57,8 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
+/* ======================= CARD ======================= */
+
 function Card({ deal }: { deal: Deal }) {
   const now = new Date();
   const { score, facets } = scoreDeal(deal, now, { season: getSeason(now) });
@@ -65,7 +67,8 @@ function Card({ deal }: { deal: Deal }) {
     ? Math.max(0, Math.ceil((new Date(deal.endsAt).getTime() - now.getTime()) / 86_400_000))
     : "—";
 
-  // ---- helpers to decide when to ignore deal.image and force the proxy ----
+  /* ---- image heuristics: avoid brand/favicons & force OG proxy for some hosts ---- */
+
   function isLogoishUrl(u?: string) {
     if (!u) return false;
     const s = u.toLowerCase();
@@ -82,32 +85,28 @@ function Card({ deal }: { deal: Deal }) {
     try {
       host = new URL(productUrl).hostname;
     } catch {
-      // ignore
+      // ignore parse issues
     }
-    // Retailers that often return brand logos in og:image
-    const forceHosts = [
-      "adidas.",        // adidas.com, adidas.com.au etc.
-      "apple.com",      // Apple Store
-      "jbhifi.com.au",  // JB Hi-Fi
-      "sony.com",
-      "samsung.com",
-      "dyson.com.au",
-    ];
+    // Retailers that often put brand assets in og:image (or block hotlinking)
+    const forceHosts = ["adidas.", "apple.com", "jbhifi.com.au", "sony.com", "samsung.com"];
     const isForceHost = forceHosts.some((h) => host.includes(h));
     return isForceHost || isLogoishUrl(imgUrl);
   }
 
-  // ---- cache-busting proxy builder (prevents stale redirects) ----
-  const cacheKey = encodeURIComponent(deal.updatedAt || deal.id || "");
-  const proxyFor = (u: string) => `/api/og-image?url=${encodeURIComponent(u)}&k=${cacheKey}`;
-
-  // ---- image source: force proxy when needed; else prefer deal.image; else proxy; else retailer logo ----
+  // Choose the best image source
   const derivedImg =
     shouldForceProxy(deal.url, deal.image)
-      ? (deal.url ? proxyFor(deal.url) : (retailerLogo(deal.retailer) || ""))
-      : (deal.image && deal.image.trim().length > 0)
-        ? deal.image
-        : (deal.url ? proxyFor(deal.url) : (retailerLogo(deal.retailer) || ""));
+      ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
+      : deal.image && deal.image.trim().length > 0
+      ? deal.image
+      : deal.url
+      ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
+      : "";
+
+  // Make sure links open off-site (no internal routing)
+  const linkUrl = /^https?:\/\//i.test(deal.url)
+    ? deal.url
+    : `https://${String(deal.url || "").replace(/^\/+/, "")}`;
 
   return (
     <div
@@ -224,15 +223,9 @@ function Card({ deal }: { deal: Deal }) {
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
+          {/* Use the absolute link; open in new tab */}
           <a
-            href={`/api/click?id=${encodeURIComponent(deal.id)}`}
-            onClick={(e) => {
-              // defensive fallback
-              if (!deal.id && deal.url) {
-                e.preventDefault();
-                window.open(deal.url, "_blank", "noopener,noreferrer");
-              }
-            }}
+            href={linkUrl}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -253,7 +246,8 @@ function Card({ deal }: { deal: Deal }) {
   );
 }
 
-// ---------- page ----------
+/* ======================= PAGE ======================= */
+
 export default function Page() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -288,7 +282,6 @@ export default function Page() {
     () => ["All", ...Array.from(new Set(deals.map((d) => d.category)))],
     [deals]
   );
-
   const retailers = useMemo(
     () => ["All", ...Array.from(new Set(deals.map((d) => d.retailer)))],
     [deals]
