@@ -5,8 +5,8 @@ const SHEET_TSV =
 
 function parseTSV(tsv: string) {
   const lines = tsv.trim().split(/\r?\n/);
-  const headers = lines.shift()!.split("\t").map((h) => h.trim());
-  return lines.map((line) => {
+  const headers = lines.shift()!.split("\t").map(h => h.trim());
+  return lines.map(line => {
     const cells = line.split("\t");
     const row: Record<string, string> = {};
     headers.forEach((h, i) => (row[h] = (cells[i] ?? "").trim()));
@@ -14,21 +14,48 @@ function parseTSV(tsv: string) {
   });
 }
 
+function normalizeId(s: string) {
+  return s.trim().toLowerCase();
+}
+
+function normalizeUrl(raw: string | undefined) {
+  if (!raw) return undefined;
+  let u = raw.trim();
+  // Add protocol if missing
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  try {
+    return new URL(u).toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
-  const subid = process.env.AFFILIATE_DEFAULT_SUBID || "springsteals";
-
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  const res = await fetch(SHEET_TSV, { cache: "no-store" });
-  if (!res.ok) return NextResponse.json({ error: "Sheet load failed" }, { status: 500 });
+  try {
+    const res = await fetch(SHEET_TSV, { cache: "no-store" });
+    if (!res.ok) return NextResponse.json({ error: "Sheet load failed" }, { status: 500 });
 
-  const rows = parseTSV(await res.text());
-  const row = rows.find((r) => r.id === id);
-  if (!row?.url) return NextResponse.json({ error: "Deal not found" }, { status: 404 });
+    const rows = parseTSV(await res.text());
+    const want = normalizeId(id);
 
-  const url = new URL(row.url);
-  url.searchParams.set("subid", subid); // harmless now; swap to real affiliate params later
-  return NextResponse.redirect(url.toString(), { status: 302 });
+    // find by ID (case/space-insensitive)
+    const row = rows.find(r => normalizeId(r.id || "") === want);
+    const dest = normalizeUrl(row?.url);
+
+    if (!dest) {
+      return NextResponse.json({ error: "Deal not found or invalid URL" }, { status: 404 });
+    }
+
+    // Optional subid to track source (harmless for non-affiliate links)
+    const url = new URL(dest);
+    url.searchParams.set("subid", process.env.AFFILIATE_DEFAULT_SUBID || "springsteals");
+
+    return NextResponse.redirect(url.toString(), { status: 302 });
+  } catch {
+    return NextResponse.json({ error: "Lookup failed" }, { status: 500 });
+  }
 }
