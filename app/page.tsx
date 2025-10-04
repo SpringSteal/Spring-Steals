@@ -89,20 +89,40 @@ function Card({ deal }: { deal: Deal }) {
           background: "#f3f4f6",
         }}
       >
-        {deal.image ? (
-          <img
-            src={deal.image}
-            alt={deal.title}
-            onError={(e) => {
-              const logo = retailerLogo(deal.retailer);
-              const el = e.currentTarget as HTMLImageElement;
-              if (logo) el.src = logo;
-              else el.style.display = "none";
-            }}
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-            loading="lazy"
-          />
-        ) : (
+        const derivedImg =
+  deal.image && deal.image.trim().length > 0
+    ? deal.image
+    : deal.url
+    ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
+    : "";
+
+{derivedImg ? (
+  <img
+    src={derivedImg}
+    alt={deal.title}
+    referrerPolicy="no-referrer"
+    onError={(e) => {
+      const logo = retailerLogo(deal.retailer);
+      const el = e.currentTarget as HTMLImageElement;
+      if (logo) el.src = logo;
+      else el.style.display = "none";
+    }}
+    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+    loading="lazy"
+  />
+) : (
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+    {retailerLogo(deal.retailer) ? (
+      <img
+        src={retailerLogo(deal.retailer)!}
+        alt={deal.retailer}
+        style={{ height: 40, opacity: 0.8 }}
+      />
+    ) : (
+      <span style={{ color: "#9ca3af" }}>No image</span>
+    )}
+  </div>
+)}
           <div
             style={{
               display: "flex",
