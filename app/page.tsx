@@ -51,7 +51,9 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 style={{ fontSize: 20, fontWeight: 800, margin: "8px 0 12px" }}>{children}</h2>
+    <h2 style={{ fontSize: 20, fontWeight: 800, margin: "8px 0 12px" }}>
+      {children}
+    </h2>
   );
 }
 
@@ -63,6 +65,9 @@ function Card({ deal }: { deal: Deal }) {
     ? Math.max(0, Math.ceil((new Date(deal.endsAt).getTime() - now.getTime()) / 86_400_000))
     : "—";
 
+  // Image source:
+  // 1) use deal.image if present
+  // 2) else fetch og:image from the product URL via our API proxy
   const derivedImg =
     deal.image && deal.image.trim().length > 0
       ? deal.image
@@ -188,6 +193,7 @@ function Card({ deal }: { deal: Deal }) {
           <a
             href={`/api/click?id=${encodeURIComponent(deal.id)}`}
             onClick={(e) => {
+              // defensive fallback
               if (!deal.id && deal.url) {
                 e.preventDefault();
                 window.open(deal.url, "_blank", "noopener,noreferrer");
@@ -220,7 +226,9 @@ export default function Page() {
   const [retailer, setRetailer] = useState("All");
   const [minDiscount, setMinDiscount] = useState(0);
   const [maxPrice, setMaxPrice] = useState(0);
-  const [sort, setSort] = useState<"score" | "newest" | "discount" | "priceAsc" | "priceDesc">("score");
+  const [sort, setSort] = useState<"score" | "newest" | "discount" | "priceAsc" | "priceDesc">(
+    "score"
+  );
   const [season, setSeason] = useState(getSeason(new Date()));
   const [deals, setDeals] = useState<Deal[]>([]);
   const filtersRef = useRef<HTMLDivElement>(null);
@@ -252,6 +260,7 @@ export default function Page() {
     [deals]
   );
 
+  // Featured: top 8 by score
   const topDeals = useMemo(() => {
     const now = new Date();
     return [...deals]
@@ -260,6 +269,7 @@ export default function Page() {
       .slice(0, 8);
   }, [deals, season]);
 
+  // Featured categories: most common 6
   const featuredCategories = useMemo(() => {
     const counts: Record<string, number> = {};
     deals.forEach((d) => {
@@ -271,6 +281,7 @@ export default function Page() {
       .map(([name]) => name);
   }, [deals]);
 
+  // All deals (filtered)
   const filtered = useMemo(() => {
     const now = new Date();
     return deals
@@ -278,23 +289,30 @@ export default function Page() {
         const q = query.toLowerCase().trim();
         const base = d.originalPrice > 0 ? d.originalPrice : d.price || 1;
         const discount = Math.round(((base - d.price) / base) * 100);
+
         return (
           (category === "All" || d.category === category) &&
           (retailer === "All" || d.retailer === retailer) &&
           (minDiscount === 0 || discount >= minDiscount) &&
           (maxPrice === 0 || d.price <= maxPrice) &&
-          (!q || (d.title + " " + d.retailer + " " + (d.tags || []).join(" ")).toLowerCase().includes(q))
+          (!q ||
+            (d.title + " " + d.retailer + " " + (d.tags || []).join(" ")).toLowerCase().includes(q))
         );
       })
       .map((d) => ({
         ...d,
         score: scoreDeal(d, now, { season }).score,
-        discountPct: Math.round((((d.originalPrice > 0 ? d.originalPrice : d.price || 1) - d.price) / (d.originalPrice > 0 ? d.originalPrice : d.price || 1)) * 100),
+        discountPct: Math.round(
+          (((d.originalPrice > 0 ? d.originalPrice : d.price || 1) - d.price) /
+            (d.originalPrice > 0 ? d.originalPrice : d.price || 1)) *
+            100
+        ),
       }))
       .sort((a: any, b: any) => {
         const sorters: Record<string, (x: any, y: any) => number> = {
           score: (x, y) => y.score - x.score,
-          newest: (x, y) => new Date(y.updatedAt).getTime() - new Date(x.updatedAt).getTime(),
+          newest: (x, y) =>
+            new Date(y.updatedAt).getTime() - new Date(x.updatedAt).getTime(),
           discount: (x, y) => y.discountPct - x.discountPct,
           priceAsc: (x, y) => x.price - y.price,
           priceDesc: (x, y) => y.price - x.price,
@@ -312,6 +330,7 @@ export default function Page() {
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
+      {/* HERO */}
       <header style={{ padding: "8px 0 16px" }}>
         <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: -0.5, margin: 0 }}>
           Spring Steals
@@ -321,19 +340,36 @@ export default function Page() {
         </p>
       </header>
 
+      {/* HOT DEALS */}
       <SectionTitle>This Week’s Hot Deals</SectionTitle>
       {topDeals.length === 0 ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db", borderRadius: 16 }}>
+        <div
+          style={{
+            padding: 24,
+            textAlign: "center",
+            color: "#6b7280",
+            border: "1px dashed #d1d5db",
+            borderRadius: 16,
+          }}
+        >
           No hot deals yet.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16, marginBottom: 24 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+            gap: 16,
+            marginBottom: 24,
+          }}
+        >
           {topDeals.map((d) => (
             <Card key={d.id} deal={d} />
           ))}
         </div>
       )}
 
+      {/* FEATURED CATEGORIES */}
       {featuredCategories.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <SectionTitle>Featured Categories</SectionTitle>
@@ -370,6 +406,7 @@ export default function Page() {
         </div>
       )}
 
+      {/* FILTER BAR + ALL DEALS */}
       <div ref={filtersRef} />
       <SectionTitle>All Deals</SectionTitle>
 
@@ -461,11 +498,25 @@ export default function Page() {
       </section>
 
       {filtered.length === 0 ? (
-        <div style={{ padding: 24, textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db", borderRadius: 16 }}>
+        <div
+          style={{
+            padding: 24,
+            textAlign: "center",
+            color: "#6b7280",
+            border: "1px dashed #d1d5db",
+            borderRadius: 16,
+          }}
+        >
           No deals match your filters.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+            gap: 16,
+          }}
+        >
           {filtered.map((d) => (
             <Card key={d.id} deal={d} />
           ))}
@@ -473,4 +524,10 @@ export default function Page() {
       )}
 
       <footer style={{ marginTop: 24, fontSize: 12, color: "#6b7280" }}>
-       
+        <p>
+          <b>Heads up:</b> Some sample data shown. We’re connecting live retailer feeds next.
+        </p>
+      </footer>
+    </div>
+  );
+}
