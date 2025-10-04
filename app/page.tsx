@@ -1,8 +1,7 @@
-import { retailerLogo } from "@/lib/logos";
-
 "use client";
+
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
+import { retailerLogo } from "@/lib/logos";
 import { getSeason, scoreDeal } from "@/lib/scoring";
 
 type Deal = {
