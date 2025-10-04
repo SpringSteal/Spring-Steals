@@ -45,6 +45,8 @@ function Card({ deal }: { deal: Deal }) {
   const { score, facets } = scoreDeal(deal, now, { season: getSeason(now) });
   const discountPct = Math.round(facets.discount * 100);
   const endsInDays = deal.endsAt ? Math.ceil((new Date(deal.endsAt).getTime() - now.getTime()) / 86400000) : "—";
+  const clickHref = `/api/click?id=${encodeURIComponent(deal.id)}`;
+  const directHref = deal.url || "#";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", borderRadius: 16, border: "1px solid #e5e7eb", background: "#fff", overflow: "hidden" }}>
@@ -94,11 +96,28 @@ function Card({ deal }: { deal: Deal }) {
             {(deal.tags || []).slice(0, 2).map((t) => <Badge key={t}>{t}</Badge>)}
           </div>
         </div>
-
         <div style={{ display: "flex", gap: 8 }}>
-          <a href={`/api/click?id=${deal.id}`} style={{ borderRadius: 12, border: "1px solid #e5e7eb", padding: "8px 12px", fontSize: 14 }}>View deal ↗</a>
-        </div>
-      </div>
+  <a
+    href={`/api/click?id=${encodeURIComponent(deal.id)}`}
+    onClick={(e) => {
+      if (!deal.id && deal.url) {
+        e.preventDefault();
+        window.open(deal.url, "_blank", "noopener,noreferrer");
+      }
+    }}
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{
+      borderRadius: 12,
+      border: "1px solid #e5e7eb",
+      padding: "8px 12px",
+      fontSize: 14
+    }}
+  >
+    View deal ↗
+  </a>
+</div>
+
     </div>
   );
 }
