@@ -319,7 +319,7 @@ export default function Page() {
     if (filtersRef.current) {
       filtersRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  };
+  }
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
