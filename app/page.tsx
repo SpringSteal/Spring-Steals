@@ -1,3 +1,5 @@
+import { retailerLogo } from "@/lib/logos";
+
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
@@ -48,8 +50,28 @@ function Card({ deal }: { deal: Deal }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", borderRadius: 16, border: "1px solid #e5e7eb", background: "#fff", overflow: "hidden" }}>
       <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 10", background: "#f3f4f6" }}>
-        {deal.image && <Image src={deal.image} alt={deal.title} fill style={{ objectFit: "cover" }} />}
-      </div>
+  {deal.image ? (
+    <img
+      src={deal.image}
+      alt={deal.title}
+      onError={(e) => {
+        const logo = retailerLogo(deal.retailer);
+        if (logo) (e.currentTarget as HTMLImageElement).src = logo;
+        else (e.currentTarget as HTMLImageElement).style.display = "none";
+      }}
+      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+    />
+  ) : (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%"}}>
+      {retailerLogo(deal.retailer) ? (
+        <img src={retailerLogo(deal.retailer)} alt={deal.retailer} style={{ height: 40, opacity: 0.8 }} />
+      ) : (
+        <span style={{ color:"#9ca3af" }}>No image</span>
+      )}
+    </div>
+  )}
+</div>
+
       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16, flex: 1 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div style={{ minWidth: 0 }}>
