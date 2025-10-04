@@ -65,15 +65,40 @@ function Card({ deal }: { deal: Deal }) {
     ? Math.max(0, Math.ceil((new Date(deal.endsAt).getTime() - now.getTime()) / 86_400_000))
     : "—";
 
-  // Image source — prefer deal.image, fallback to retailer logo or OG image
-const derivedImg =
-  deal.image && deal.image.trim().length > 0
-    ? deal.image
-    : retailerLogo(deal.retailer)
-    ? retailerLogo(deal.retailer)
-    : deal.url
-    ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
-    : "/placeholder.png";
+  // ---- helpers to decide when to ignore deal.image and force the proxy ----
+  function isLogoishUrl(u?: string) {
+    if (!u) return false;
+    const s = u.toLowerCase();
+    return (
+      s.endsWith(".svg") ||
+      /(^|\/)(logo|brand|sprite|placeholder|icon|badge)(-|_|\.|\/)/.test(s) ||
+      /apple-touch-icon|favicon|opengraphimage/.test(s)
+    );
+  }
+
+  function shouldForceProxy(productUrl?: string, imgUrl?: string) {
+    if (!productUrl) return isLogoishUrl(imgUrl);
+    let host = "";
+    try {
+      host = new URL(productUrl).hostname;
+    } catch {
+      // ignore
+    }
+    // Retailers that often return brand logos in og:image
+    const forceHosts = ["adidas.", "apple.com", "jbhifi.com.au", "sony.com", "samsung.com"];
+    const isForceHost = forceHosts.some((h) => host.includes(h));
+    return isForceHost || isLogoishUrl(imgUrl);
+  }
+
+  // Image source: force proxy for the cases above, otherwise prefer deal.image, then proxy
+  const derivedImg =
+    shouldForceProxy(deal.url, deal.image)
+      ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
+      : deal.image && deal.image.trim().length > 0
+      ? deal.image
+      : deal.url
+      ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
+      : "";
 
   return (
     <div
