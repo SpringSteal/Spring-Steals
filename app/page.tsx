@@ -95,8 +95,12 @@ export default function Page() {
   const filtersRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/deals").then(r => r.json()).then(setDeals).catch(() => {});
-  }, []);
+  fetch("/api/deals", { cache: "no-store" })
+    .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    .then(setDeals)
+    .catch(() => setDeals([]));
+}, []);
+
 
   const allCategories = useMemo(() => ["All", ...Array.from(new Set(deals.map(d => d.category)))], [deals]);
   const retailers = useMemo(() => ["All", ...Array.from(new Set(deals.map(d => d.retailer)))], [deals]);
