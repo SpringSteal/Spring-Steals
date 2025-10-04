@@ -4,161 +4,134 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type Candidate = { url: string; score: number };
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 
-function abs(u: string, base: string) {
-  try { return new URL(u, base).toString(); } catch { return u; }
-}
+const IMG_EXT = /\.(avif|webp|png|jpe?g|gif)$/i;
 
-function grab(html: string, base: string, re: RegExp, pick?: (m: RegExpMatchArray) => string) {
-  const out: string[] = [];
-  for (const m of html.matchAll(re)) {
-    const raw = pick ? pick(m) : m[1];
-    if (raw) out.push(abs(raw.trim(), base));
-  }
-  return out;
-}
-
-function jsonLd(html: string, base: string) {
-  const out: string[] = [];
-  for (const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
-    try {
-      const data = JSON.parse(m[1]);
-      const nodes = Array.isArray(data) ? data : [data];
-      for (const n of nodes) {
-        const img = n?.image;
-        if (!img) continue;
-        if (typeof img === "string") out.push(abs(img, base));
-        else if (Array.isArray(img)) {
-          for (const it of img) {
-            if (typeof it === "string") out.push(abs(it, base));
-            else if (it?.url) out.push(abs(it.url, base));
-          }
-        } else if (img?.url) out.push(abs(img.url, base));
-      }
-    } catch { /* ignore */ }
-  }
-  return out;
-}
-
-function looksLogoish(u: string) {
+function isLogoish(u: string) {
   const s = u.toLowerCase();
   return (
     s.endsWith(".svg") ||
-    /(^|\/)(logo|brand|sprite|placeholder|icon|badge|favicon)(-|_|\.|\/)/.test(s) ||
-    /apple-touch-icon|opengraphimage/.test(s)
+    /(^|\/)(logo|brand|sprite|placeholder|icon|badge)(-|_|\.|\/)/.test(s) ||
+    /apple-touch-icon|favicon/.test(s)
   );
 }
 
-function score(u: string, host: string) {
-  let n = 0;
-  if (/\.(jpe?g|png|webp)(\?|#|$)/i.test(u)) n += 5;
-  if (looksLogoish(u)) n -= 8;
-  if (/[/_-](\d{3,}|[0-9]{2,}x[0-9]{2,})/.test(u)) n += 2;
-
-  // Domain-specific nudges
-  if (/adidas\./i.test(host)) {
-    if (/assets\.adidas\.com\/images/i.test(u)) n += 6; // real product CDN
-    if (/\/logos?\//i.test(u)) n -= 6;
+function abs(base: string, maybeRel: string) {
+  try {
+    return new URL(maybeRel, base).toString();
+  } catch {
+    return maybeRel;
   }
-  if (/apple\.com/i.test(host)) {
-    if (/storeimages\.cdn-apple\.com/i.test(u)) n += 4;
-  }
-  if (/dyson\.com\.au/i.test(host)) {
-    if (/is\/image|\/medias\//i.test(u)) n += 4; // dyson adobe/medias
-  }
-  if (/jbhifi\.com\.au/i.test(host)) {
-    if (/cdn|product|large/i.test(u)) n += 2;
-  }
-  return n;
 }
 
-function pickImage(html: string, baseUrl: string): string | null {
-  const host = new URL(baseUrl).hostname;
-  const set = new Set<string>();
+function extractFirstImage(html: string, pageUrl: string) {
+  // og:image / twitter:image
+  const m =
+    html.match(/<meta\s+(?:property|name)=["']og:image(?::secure_url)?["']\s+content=["']([^"']+)["']/i) ||
+    html.match(/<meta\s+content=["']([^"']+)["']\s+(?:property|name)=["']og:image(?::secure_url)?["']/i) ||
+    html.match(/<meta\s+name=["']twitter:image(?::src)?["']\s+content=["']([^"']+)["']/i) ||
+    html.match(/<link\s+rel=["']image_src["']\s+href=["']([^"']+)["']/i);
 
-  // Common metas
-  [
-    /<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)["']/gi,
-    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi,
-    /<meta[^>]+name=["']twitter:image:src["'][^>]+content=["']([^"']+)["']/gi,
-    /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/gi,
-    /<meta[^>]+itemprop=["']image["'][^>]+content=["']([^"']+)["']/gi,
-    /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/gi,
-  ].forEach((re) => grab(html, baseUrl, re).forEach((u) => set.add(u)));
+  let candidate = (m?.[2] ?? m?.[1]) as string | undefined;
+  if (candidate) candidate = abs(pageUrl, candidate);
 
-  // JSON-LD
-  jsonLd(html, baseUrl).forEach((u) => set.add(u));
-
-  // Generic <img> sources
-  grab(html, baseUrl, /<img[^>]+src=["']([^"']+)["'][^>]*>/gi).forEach((u) => set.add(u));
-  // srcset (pick the *largest* url in the set)
-  for (const m of html.matchAll(/<img[^>]+srcset=["']([^"']+)["'][^>]*>/gi)) {
-    const srcset = m[1].split(",").map((p) => p.trim().split(" ")[0]).filter(Boolean);
-    srcset.forEach((u) => set.add(abs(u, baseUrl)));
-  }
-  // Lazy attrs
-  grab(html, baseUrl, /<img[^>]+data-src=["']([^"']+)["'][^>]*>/gi).forEach((u) => set.add(u));
-  for (const m of html.matchAll(/<img[^>]+data-srcset=["']([^"']+)["'][^>]*>/gi)) {
-    const srcset = m[1].split(",").map((p) => p.trim().split(" ")[0]).filter(Boolean);
-    srcset.forEach((u) => set.add(abs(u, baseUrl)));
+  // Filter out obvious bad choices (logos/favicons etc.)
+  if (!candidate || isLogoish(candidate)) {
+    // pick first plausible <img> src with typical product extensions
+    const imgs = [...html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)]
+      .map((x) => abs(pageUrl, x[1]))
+      .filter((u) => IMG_EXT.test(u) && !isLogoish(u));
+    candidate = imgs[0];
   }
 
-  // Adidas hard fallback: any product CDN image
-  if (/adidas\./i.test(host)) {
-    grab(html, baseUrl, /(https?:\/\/assets\.adidas\.com\/images\/[^"' )]+?\.(?:jpe?g|png|webp))/gi)
-      .forEach((u) => set.add(u));
-  }
-  // Apple Store hard fallback
-  if (/apple\.com/i.test(host)) {
-    grab(html, baseUrl, /(https?:\/\/storeimages\.cdn-apple\.com\/[^"' )]+?\.(?:jpe?g|png|webp))/gi)
-      .forEach((u) => set.add(u));
-  }
-  // Dyson AU fallback
-  if (/dyson\.com\.au/i.test(host)) {
-    grab(html, baseUrl, /(https?:\/\/[^"' )]+?\/(is\/image|medias)\/[^"' )]+\.(?:jpe?g|png|webp))/gi)
-      .forEach((u) => set.add(u));
+  return candidate;
+}
+
+async function fetchBytes(imageUrl: string, referer?: string) {
+  // Some retailers block hotlinking; fake a referer from product page origin if provided.
+  const headers: Record<string, string> = { "user-agent": UA };
+  if (referer) {
+    try {
+      const o = new URL(referer);
+      headers["referer"] = `${o.protocol}//${o.host}/`;
+    } catch {}
   }
 
-  if (!set.size) return null;
+  const res = await fetch(imageUrl, {
+    headers,
+    redirect: "follow",
+    cache: "no-store",
+    next: { revalidate: 0 },
+  });
 
-  const ranked: Candidate[] = Array.from(set).map((u) => ({ url: u, score: score(u, host) }));
-  ranked.sort((a, b) => b.score - a.score);
+  if (!res.ok) throw new Error(`image fetch ${res.status}`);
+  const ct = res.headers.get("content-type") || "image/jpeg";
+  const buf = Buffer.from(await res.arrayBuffer());
 
-  const winner = ranked.find((c) => c.score > 0) ?? ranked[0];
-  return winner?.url ?? null;
+  return { buf, ct };
+}
+
+function nocache() {
+  return {
+    "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+    pragma: "no-cache",
+    expires: "0",
+    "content-security-policy":
+      "default-src 'none'; img-src data: blob: https: http:; style-src 'unsafe-inline';",
+  };
 }
 
 export async function GET(req: NextRequest) {
-  const url = req.nextUrl.searchParams.get("url");
-  if (!url) return NextResponse.json({ error: "Missing url" }, { status: 400 });
-
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-      redirect: "follow",
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      return NextResponse.json({ error: `Upstream HTTP ${res.status}` }, { status: 502 });
+    const urlParam = req.nextUrl.searchParams.get("url");   // product page
+    const imgParam = req.nextUrl.searchParams.get("image"); // direct image
+    const base = req.nextUrl.searchParams.get("base") || urlParam || "";
+
+    let imageUrl: string | undefined;
+
+    if (imgParam) {
+      imageUrl = abs(base, imgParam);
+    } else if (urlParam) {
+      // fetch product page -> extract image
+      const pageRes = await fetch(urlParam, {
+        cache: "no-store",
+        next: { revalidate: 0 },
+        headers: { "user-agent": UA },
+        redirect: "follow",
+      });
+      if (!pageRes.ok) throw new Error(`page fetch ${pageRes.status}`);
+      const html = await pageRes.text();
+      imageUrl = extractFirstImage(html, urlParam);
     }
 
-    const html = await res.text();
-    const img = pickImage(html, res.url || url);
-
-    if (img) {
-      const r = NextResponse.redirect(img, 302);
-      // cache a bit, adjust if you like
-      r.headers.set("Cache-Control", "public, max-age=1800, s-maxage=1800");
-      return r;
+    if (!imageUrl) {
+      return new NextResponse("no-image", { status: 404, headers: nocache() });
     }
 
-    return NextResponse.json({ error: "No suitable image" }, { status: 404 });
+    // try with referer first (helps with hotlink protection)
+    try {
+      const { buf, ct } = await fetchBytes(imageUrl, base);
+      return new NextResponse(buf, {
+        status: 200,
+        headers: {
+          ...nocache(),
+          "content-type": ct,
+        },
+      });
+    } catch {
+      // retry without referer
+      const { buf, ct } = await fetchBytes(imageUrl);
+      return new NextResponse(buf, {
+        status: 200,
+        headers: {
+          ...nocache(),
+          "content-type": ct,
+        },
+      });
+    }
   } catch {
-    return NextResponse.json({ error: "Fetch failed" }, { status: 500 });
+    return new NextResponse("no-image", { status: 404, headers: nocache() });
   }
 }
