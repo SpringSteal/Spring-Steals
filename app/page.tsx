@@ -21,7 +21,7 @@ type Deal = {
   regions: string[];
 };
 
-// ---------- tiny UI helpers ----------
+/* ---------- tiny UI helpers ---------- */
 function Badge({ children }: { children: React.ReactNode }) {
   return (
     <span
@@ -67,8 +67,7 @@ function Card({ deal }: { deal: Deal }) {
     ? Math.max(0, Math.ceil((new Date(deal.endsAt).getTime() - now.getTime()) / 86_400_000))
     : "—";
 
-  /* ---- image heuristics: avoid brand/favicons & force OG proxy for some hosts ---- */
-
+  // Avoid logo / favicon / sprite images
   function isLogoishUrl(u?: string) {
     if (!u) return false;
     const s = u.toLowerCase();
@@ -79,21 +78,20 @@ function Card({ deal }: { deal: Deal }) {
     );
   }
 
+  // Some hosts often use brand assets in og:image or block hotlinking → use our OG proxy
   function shouldForceProxy(productUrl?: string, imgUrl?: string) {
     if (!productUrl) return isLogoishUrl(imgUrl);
     let host = "";
     try {
       host = new URL(productUrl).hostname;
     } catch {
-      // ignore parse issues
+      // ignore
     }
-    // Retailers that often put brand assets in og:image (or block hotlinking)
     const forceHosts = ["adidas.", "apple.com", "jbhifi.com.au", "sony.com", "samsung.com"];
     const isForceHost = forceHosts.some((h) => host.includes(h));
     return isForceHost || isLogoishUrl(imgUrl);
   }
 
-  // Choose the best image source
   const derivedImg =
     shouldForceProxy(deal.url, deal.image)
       ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
@@ -103,10 +101,13 @@ function Card({ deal }: { deal: Deal }) {
       ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
       : "";
 
-  // Make sure links open off-site (no internal routing)
-  const linkUrl = /^https?:\/\//i.test(deal.url)
-    ? deal.url
-    : `https://${String(deal.url || "").replace(/^\/+/, "")}`;
+  // ensure absolute external link (no internal routing)
+  const linkUrl = (() => {
+    const raw = String(deal.url || "").trim();
+    if (!raw) return "#";
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return `https://${raw.replace(/^\/+/, "")}`;
+  })();
 
   return (
     <div
@@ -132,6 +133,7 @@ function Card({ deal }: { deal: Deal }) {
             src={derivedImg}
             alt={deal.title}
             referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
             onError={(e) => {
               const logo = retailerLogo(deal.retailer);
               const el = e.currentTarget as HTMLImageElement;
@@ -223,7 +225,6 @@ function Card({ deal }: { deal: Deal }) {
         </div>
 
         <div style={{ display: "flex", gap: 8 }}>
-          {/* Use the absolute link; open in new tab */}
           <a
             href={linkUrl}
             target="_blank"
@@ -259,23 +260,28 @@ export default function Page() {
   );
   const [season, setSeason] = useState(getSeason(new Date()));
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [loading, setLoading] = useState(true);
   const filtersRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/deals", { cache: "no-store" })
+    const ctrl = new AbortController();
+    setLoading(true);
+
+    fetch(`/api/deals?cb=${Date.now()}`, {
+      cache: "no-store",
+      signal: ctrl.signal,
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data) => {
-        if (cancelled) return;
         const rows: Deal[] = Array.isArray(data) ? data : (data?.deals ?? []);
         setDeals(rows ?? []);
       })
       .catch(() => {
-        if (!cancelled) setDeals([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+        setDeals([]);
+      })
+      .finally(() => setLoading(false));
+
+    return () => ctrl.abort();
   }, []);
 
   const allCategories = useMemo(
@@ -369,7 +375,20 @@ export default function Page() {
 
       {/* HOT DEALS */}
       <SectionTitle>This Week’s Hot Deals</SectionTitle>
-      {topDeals.length === 0 ? (
+
+      {loading ? (
+        <div
+          style={{
+            padding: 24,
+            textAlign: "center",
+            color: "#6b7280",
+            border: "1px dashed #d1d5db",
+            borderRadius: 16,
+          }}
+        >
+          Loading latest deals…
+        </div>
+      ) : topDeals.length === 0 ? (
         <div
           style={{
             padding: 24,
@@ -524,7 +543,7 @@ export default function Page() {
         </div>
       </section>
 
-      {filtered.length === 0 ? (
+      {loading ? null : filtered.length === 0 ? (
         <div
           style={{
             padding: 24,
