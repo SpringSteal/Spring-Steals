@@ -1,9 +1,11 @@
-import { NextResponse, NextRequest } from "next/server";
+// app/api/deals/route.ts
+import { NextRequest, NextResponse } from "next/server";
 
 const SHEET_TSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ6q3INgmFhO6gH7QkxofX4jeHPx7XNtxz-_MFYYy9C9uDURHx879YMQumttQbRrocO0F9QW8GZLhX1/pub?output=tsv";
 
-// --- Helpers ---
+/* --------------------------- helpers --------------------------- */
+
 function parseTSV(tsv: string) {
   const lines = tsv.trim().split(/\r?\n/);
   const headers = lines.shift()!.split("\t").map((h) => h.replace(/\r/g, "").trim());
@@ -14,10 +16,16 @@ function parseTSV(tsv: string) {
     return row;
   });
 }
-const toNum = (s: string) => (s ? Number(s) : 0);
-const toArr = (s: string) => (s ? s.split(";").map((x) => x.trim()).filter(Boolean) : []);
 
-// Minimal in-memory cache for og:image during a single request burst
+const toNum = (s: string) => {
+  if (!s) return 0;
+  return Number(String(s).replace(/[$, ]/g, "")) || 0;
+};
+
+const toArr = (s: string) =>
+  s ? s.split(/[;,]/).map((x) => x.trim()).filter(Boolean) : [];
+
+// per-request og:image cache
 const ogCache = new Map<string, string>();
 async function fetchOgImage(url: string): Promise<string | undefined> {
   try {
@@ -39,21 +47,25 @@ async function fetchOgImage(url: string): Promise<string | undefined> {
   }
 }
 
+function noCacheHeaders() {
+  return {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+    pragma: "no-cache",
+    expires: "0",
+  };
+}
+
+/* ---------------------------- route ---------------------------- */
+
 export async function GET(_req: NextRequest) {
   try {
-    // Force cache-bust the published TSV and disable caching
     const res = await fetch(`${SHEET_TSV}&cb=${Date.now()}`, {
       cache: "no-store",
       next: { revalidate: 0 },
     });
     if (!res.ok) {
-      return new NextResponse(JSON.stringify([]), {
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
-        },
-        status: 200,
-      });
+      return new NextResponse(JSON.stringify([]), { status: 200, headers: noCacheHeaders() });
     }
 
     const text = await res.text();
@@ -69,7 +81,7 @@ export async function GET(_req: NextRequest) {
         image: r.image || "",
         price: toNum(r.price),
         originalPrice: toNum(r.originalPrice) || toNum(r.price),
-        currency: r.currency || "AUD",
+        currency: (r.currency || "AUD").toUpperCase(),
         tags: toArr(r.tags),
         regions: toArr(r.regions),
         popularity: toNum(r.popularity) || 0,
@@ -78,7 +90,6 @@ export async function GET(_req: NextRequest) {
       }))
       .filter((d) => d.id && d.title && d.url && d.price > 0 && d.originalPrice > 0);
 
-    // Enrich missing images from og:image
     deals = await Promise.all(
       deals.map(async (d) => {
         if (!d.image) {
@@ -89,22 +100,8 @@ export async function GET(_req: NextRequest) {
       })
     );
 
-    return new NextResponse(JSON.stringify(deals), {
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
-        pragma: "no-cache",
-        expires: "0",
-      },
-      status: 200,
-    });
+    return new NextResponse(JSON.stringify(deals), { status: 200, headers: noCacheHeaders() });
   } catch {
-    return new NextResponse(JSON.stringify([]), {
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
-      },
-      status: 200,
-    });
+    return new NextResponse(JSON.stringify([]), { status: 200, headers: noCacheHeaders() });
   }
 }
