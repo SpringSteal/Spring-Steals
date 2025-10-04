@@ -51,9 +51,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 style={{ fontSize: 20, fontWeight: 800, margin: "8px 0 12px" }}>
-      {children}
-    </h2>
+    <h2 style={{ fontSize: 20, fontWeight: 800, margin: "8px 0 12px" }}>{children}</h2>
   );
 }
 
@@ -222,9 +220,7 @@ export default function Page() {
   const [retailer, setRetailer] = useState("All");
   const [minDiscount, setMinDiscount] = useState(0);
   const [maxPrice, setMaxPrice] = useState(0);
-  const [sort, setSort] = useState<"score" | "newest" | "discount" | "priceAsc" | "priceDesc">(
-    "score"
-  );
+  const [sort, setSort] = useState<"score" | "newest" | "discount" | "priceAsc" | "priceDesc">("score");
   const [season, setSeason] = useState(getSeason(new Date()));
   const [deals, setDeals] = useState<Deal[]>([]);
   const filtersRef = useRef<HTMLDivElement>(null);
@@ -250,6 +246,7 @@ export default function Page() {
     () => ["All", ...Array.from(new Set(deals.map((d) => d.category)))],
     [deals]
   );
+
   const retailers = useMemo(
     () => ["All", ...Array.from(new Set(deals.map((d) => d.retailer)))],
     [deals]
@@ -276,29 +273,23 @@ export default function Page() {
 
   const filtered = useMemo(() => {
     const now = new Date();
-    const rows = deals
+    return deals
       .filter((d) => {
         const q = query.toLowerCase().trim();
         const base = d.originalPrice > 0 ? d.originalPrice : d.price || 1;
         const discount = Math.round(((base - d.price) / base) * 100);
-
         return (
           (category === "All" || d.category === category) &&
           (retailer === "All" || d.retailer === retailer) &&
           (minDiscount === 0 || discount >= minDiscount) &&
           (maxPrice === 0 || d.price <= maxPrice) &&
-          (!q ||
-            (d.title + " " + d.retailer + " " + (d.tags || []).join(" ")).toLowerCase().includes(q))
+          (!q || (d.title + " " + d.retailer + " " + (d.tags || []).join(" ")).toLowerCase().includes(q))
         );
       })
       .map((d) => ({
         ...d,
         score: scoreDeal(d, now, { season }).score,
-        discountPct: Math.round(
-          (((d.originalPrice > 0 ? d.originalPrice : d.price || 1) - d.price) /
-            (d.originalPrice > 0 ? d.originalPrice : d.price || 1)) *
-            100
-        ),
+        discountPct: Math.round((((d.originalPrice > 0 ? d.originalPrice : d.price || 1) - d.price) / (d.originalPrice > 0 ? d.originalPrice : d.price || 1)) * 100),
       }))
       .sort((a: any, b: any) => {
         const sorters: Record<string, (x: any, y: any) => number> = {
@@ -310,8 +301,6 @@ export default function Page() {
         };
         return (sorters[sort] || sorters.score)(a, b);
       });
-
-    return rows;
   }, [deals, query, category, retailer, minDiscount, maxPrice, sort, season]);
 
   const goToAllDeals = (newCategory?: string) => {
@@ -319,11 +308,10 @@ export default function Page() {
     if (filtersRef.current) {
       filtersRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }
+  };
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 16 }}>
-      {/* HERO */}
       <header style={{ padding: "8px 0 16px" }}>
         <h1 style={{ fontSize: 32, fontWeight: 900, letterSpacing: -0.5, margin: 0 }}>
           Spring Steals
@@ -333,36 +321,19 @@ export default function Page() {
         </p>
       </header>
 
-      {/* HOT DEALS */}
       <SectionTitle>This Week’s Hot Deals</SectionTitle>
       {topDeals.length === 0 ? (
-        <div
-          style={{
-            padding: 24,
-            textAlign: "center",
-            color: "#6b7280",
-            border: "1px dashed #d1d5db",
-            borderRadius: 16,
-          }}
-        >
+        <div style={{ padding: 24, textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db", borderRadius: 16 }}>
           No hot deals yet.
         </div>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-            gap: 16,
-            marginBottom: 24,
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16, marginBottom: 24 }}>
           {topDeals.map((d) => (
             <Card key={d.id} deal={d} />
           ))}
         </div>
       )}
 
-      {/* FEATURED CATEGORIES */}
       {featuredCategories.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <SectionTitle>Featured Categories</SectionTitle>
@@ -399,7 +370,6 @@ export default function Page() {
         </div>
       )}
 
-      {/* FILTER BAR + ALL DEALS */}
       <div ref={filtersRef} />
       <SectionTitle>All Deals</SectionTitle>
 
@@ -473,22 +443,14 @@ export default function Page() {
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <select
-            value={season}
-            onChange={(e) => setSeason(e.target.value as any)}
-            aria-label="Season"
-          >
+          <select value={season} onChange={(e) => setSeason(e.target.value as any)} aria-label="Season">
             {["Summer", "Autumn", "Winter", "Spring"].map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
           </select>
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as any)}
-            aria-label="Sort"
-          >
+          <select value={sort} onChange={(e) => setSort(e.target.value as any)} aria-label="Sort">
             <option value="score">Sort: Best Score</option>
             <option value="newest">Sort: Newest</option>
             <option value="discount">Sort: Biggest Discount</option>
@@ -499,26 +461,16 @@ export default function Page() {
       </section>
 
       {filtered.length === 0 ? (
-        <div
-          style={{
-            padding: 24,
-            textAlign: "center",
-            color: "#6b7280",
-            border: "1px dashed #d1d5db",
-            borderRadius: 16,
-          }}
-        >
+        <div style={{ padding: 24, textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db", borderRadius: 16 }}>
           No deals match your filters.
-                </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
+          {filtered.map((d) => (
+            <Card key={d.id} deal={d} />
+          ))}
+        </div>
       )}
 
       <footer style={{ marginTop: 24, fontSize: 12, color: "#6b7280" }}>
-        <p>
-          <b>Heads up:</b> Some sample data shown. We’re connecting live retailer feeds next.
-        </p>
-      </footer>
-    </div>
-  );
-}
-
-           
+       
