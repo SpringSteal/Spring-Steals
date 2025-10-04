@@ -65,7 +65,6 @@ function Card({ deal }: { deal: Deal }) {
     ? Math.max(0, Math.ceil((new Date(deal.endsAt).getTime() - now.getTime()) / 86_400_000))
     : "—";
 
-  // Image logic — fixed placement
   const derivedImg =
     deal.image && deal.image.trim().length > 0
       ? deal.image
@@ -224,7 +223,7 @@ export default function Page() {
   const [minDiscount, setMinDiscount] = useState(0);
   const [maxPrice, setMaxPrice] = useState(0);
   const [sort, setSort] = useState<"score" | "newest" | "discount" | "priceAsc" | "priceDesc">(
-    "score",
+    "score"
   );
   const [season, setSeason] = useState(getSeason(new Date()));
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -249,11 +248,11 @@ export default function Page() {
 
   const allCategories = useMemo(
     () => ["All", ...Array.from(new Set(deals.map((d) => d.category)))],
-    [deals],
+    [deals]
   );
   const retailers = useMemo(
     () => ["All", ...Array.from(new Set(deals.map((d) => d.retailer)))],
-    [deals],
+    [deals]
   );
 
   const topDeals = useMemo(() => {
@@ -298,14 +297,13 @@ export default function Page() {
         discountPct: Math.round(
           (((d.originalPrice > 0 ? d.originalPrice : d.price || 1) - d.price) /
             (d.originalPrice > 0 ? d.originalPrice : d.price || 1)) *
-            100,
+            100
         ),
       }))
       .sort((a: any, b: any) => {
         const sorters: Record<string, (x: any, y: any) => number> = {
           score: (x, y) => y.score - x.score,
-          newest: (x, y) =>
-            new Date(y.updatedAt).getTime() - new Date(x.updatedAt).getTime(),
+          newest: (x, y) => new Date(y.updatedAt).getTime() - new Date(x.updatedAt).getTime(),
           discount: (x, y) => y.discountPct - x.discountPct,
           priceAsc: (x, y) => x.price - y.price,
           priceDesc: (x, y) => y.price - x.price,
@@ -511,4 +509,8 @@ export default function Page() {
           }}
         >
           No deals match your filters.
-       
+        </div>
+      ) : (
+        <div
+          style={{
+           
