@@ -65,10 +65,13 @@ function Card({ deal }: { deal: Deal }) {
     ? Math.max(0, Math.ceil((new Date(deal.endsAt).getTime() - now.getTime()) / 86_400_000))
     : "—";
 
-  // computed but we’ll use direct anchor below
-  // kept to preserve intent and avoid “unused var” errors
-  const _clickHref = `/api/click?id=${encodeURIComponent(deal.id)}`;
-  const _directHref = deal.url || "#";
+  // Image logic — fixed placement
+  const derivedImg =
+    deal.image && deal.image.trim().length > 0
+      ? deal.image
+      : deal.url
+      ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
+      : "";
 
   return (
     <div
@@ -89,40 +92,21 @@ function Card({ deal }: { deal: Deal }) {
           background: "#f3f4f6",
         }}
       >
-        const derivedImg =
-  deal.image && deal.image.trim().length > 0
-    ? deal.image
-    : deal.url
-    ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
-    : "";
-
-{derivedImg ? (
-  <img
-    src={derivedImg}
-    alt={deal.title}
-    referrerPolicy="no-referrer"
-    onError={(e) => {
-      const logo = retailerLogo(deal.retailer);
-      const el = e.currentTarget as HTMLImageElement;
-      if (logo) el.src = logo;
-      else el.style.display = "none";
-    }}
-    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-    loading="lazy"
-  />
-) : (
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
-    {retailerLogo(deal.retailer) ? (
-      <img
-        src={retailerLogo(deal.retailer)!}
-        alt={deal.retailer}
-        style={{ height: 40, opacity: 0.8 }}
-      />
-    ) : (
-      <span style={{ color: "#9ca3af" }}>No image</span>
-    )}
-  </div>
-)}
+        {derivedImg ? (
+          <img
+            src={derivedImg}
+            alt={deal.title}
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              const logo = retailerLogo(deal.retailer);
+              const el = e.currentTarget as HTMLImageElement;
+              if (logo) el.src = logo;
+              else el.style.display = "none";
+            }}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+            loading="lazy"
+          />
+        ) : (
           <div
             style={{
               display: "flex",
@@ -207,7 +191,6 @@ function Card({ deal }: { deal: Deal }) {
           <a
             href={`/api/click?id=${encodeURIComponent(deal.id)}`}
             onClick={(e) => {
-              // `id` is required, but keep a defensive fallback to direct URL
               if (!deal.id && deal.url) {
                 e.preventDefault();
                 window.open(deal.url, "_blank", "noopener,noreferrer");
@@ -249,7 +232,6 @@ export default function Page() {
 
   useEffect(() => {
     let cancelled = false;
-    // Avoid crashing if API returns { deals: [...] } or [...]
     fetch("/api/deals", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data) => {
@@ -274,7 +256,6 @@ export default function Page() {
     [deals],
   );
 
-  // Featured: top 8 by score
   const topDeals = useMemo(() => {
     const now = new Date();
     return [...deals]
@@ -283,7 +264,6 @@ export default function Page() {
       .slice(0, 8);
   }, [deals, season]);
 
-  // Featured categories: most common 6
   const featuredCategories = useMemo(() => {
     const counts: Record<string, number> = {};
     deals.forEach((d) => {
@@ -295,7 +275,6 @@ export default function Page() {
       .map(([name]) => name);
   }, [deals]);
 
-  // All deals (filtered section)
   const filtered = useMemo(() => {
     const now = new Date();
     const rows = deals
@@ -532,26 +511,4 @@ export default function Page() {
           }}
         >
           No deals match your filters.
-        </div>
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-            gap: 16,
-          }}
-        >
-          {filtered.map((d) => (
-            <Card key={d.id} deal={d} />
-          ))}
-        </div>
-      )}
-
-      <footer style={{ marginTop: 24, fontSize: 12, color: "#6b7280" }}>
-        <p>
-          <b>Heads up:</b> Some sample data shown. We’re connecting live retailer feeds next.
-        </p>
-      </footer>
-    </div>
-  );
-}
+       
