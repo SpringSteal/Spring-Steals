@@ -85,20 +85,29 @@ function Card({ deal }: { deal: Deal }) {
       // ignore
     }
     // Retailers that often return brand logos in og:image
-    const forceHosts = ["adidas.", "apple.com", "jbhifi.com.au", "sony.com", "samsung.com"];
+    const forceHosts = [
+      "adidas.",        // adidas.com, adidas.com.au etc.
+      "apple.com",      // Apple Store
+      "jbhifi.com.au",  // JB Hi-Fi
+      "sony.com",
+      "samsung.com",
+      "dyson.com.au",
+    ];
     const isForceHost = forceHosts.some((h) => host.includes(h));
     return isForceHost || isLogoishUrl(imgUrl);
   }
 
-  // Image source: force proxy for the cases above, otherwise prefer deal.image, then proxy
+  // ---- cache-busting proxy builder (prevents stale redirects) ----
+  const cacheKey = encodeURIComponent(deal.updatedAt || deal.id || "");
+  const proxyFor = (u: string) => `/api/og-image?url=${encodeURIComponent(u)}&k=${cacheKey}`;
+
+  // ---- image source: force proxy when needed; else prefer deal.image; else proxy; else retailer logo ----
   const derivedImg =
     shouldForceProxy(deal.url, deal.image)
-      ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
-      : deal.image && deal.image.trim().length > 0
-      ? deal.image
-      : deal.url
-      ? `/api/og-image?url=${encodeURIComponent(deal.url)}`
-      : "";
+      ? (deal.url ? proxyFor(deal.url) : (retailerLogo(deal.retailer) || ""))
+      : (deal.image && deal.image.trim().length > 0)
+        ? deal.image
+        : (deal.url ? proxyFor(deal.url) : (retailerLogo(deal.retailer) || ""));
 
   return (
     <div
