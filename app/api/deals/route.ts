@@ -1,9 +1,6 @@
 // app/api/deals/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 const SHEET_TSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ6q3INgmFhO6gH7QkxofX4jeHPx7XNtxz-_MFYYy9C9uDURHx879YMQumttQbRrocO0F9QW8GZLhX1/pub?output=tsv";
 
@@ -28,7 +25,7 @@ const toNum = (s: string) => {
 const toArr = (s: string) =>
   s ? s.split(/[;,]/).map((x) => x.trim()).filter(Boolean) : [];
 
-// Per-process OG cache
+// per-request og:image cache
 const ogCache = new Map<string, string>();
 async function fetchOgImage(url: string): Promise<string | undefined> {
   try {
@@ -45,98 +42,38 @@ async function fetchOgImage(url: string): Promise<string | undefined> {
       ogCache.set(url, og);
       return og;
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
-/* ---------- URL normalization (key fix for TGG & HN) ---------- */
+/* --------- SAFE URL cleanup (never drop/blank a working URL) -------- */
 
 function sanitizeUrl(raw?: string) {
   if (!raw) return "";
   let u = raw
-    .replace(/[\u200B-\u200D\uFEFF]/g, "") // zero-width chars
+    .replace(/[\u200B-\u200D\uFEFF]/g, "") // stray zero-width chars
     .replace(/&amp;/gi, "&")
     .trim();
   if (!/^https?:\/\//i.test(u)) u = "https://" + u;
-  u = u.replace(/\s+/g, "%20");
-  return u;
+  return u.replace(/\s+/g, "%20");
 }
 
-async function followRedirects(url: string, maxHops = 4) {
-  let current = url;
-  for (let i = 0; i < maxHops; i++) {
-    try {
-      const res = await fetch(current, {
-        method: "HEAD",
-        redirect: "manual",
-        cache: "no-store",
-        next: { revalidate: 0 },
-      });
-      const loc = res.headers.get("location");
-      if (res.status >= 300 && res.status < 400 && loc) {
-        try {
-          current = new URL(loc, current).toString();
-        } catch {
-          current = loc;
-        }
-        continue;
-      }
-      break;
-    } catch {
-      break;
-    }
-  }
-  return current;
-}
-
-async function canonicalFromGet(url: string): Promise<string | undefined> {
+/** Try to swap to canonical/og:url. If anything fails, return the original. */
+async function maybeCanonical(url: string): Promise<string> {
   try {
     const res = await fetch(url, { cache: "no-store", next: { revalidate: 0 } });
-    // If they give us a 404 content, still try to read canonical/og:url
     const html = await res.text();
-    const linkCanon = html.match(/<link\s+rel=["']canonical["']\s+href=["']([^"']+)["']/i)?.[1];
-    const ogUrl = html.match(/<meta\s+property=["']og:url["']\s+content=["']([^"']+)["']/i)?.[1];
-    const found = linkCanon || ogUrl;
-    if (found) return new URL(found, url).toString();
-  } catch {}
-}
-
-/**
- * Normalize retailer URLs to stable product pages.
- * - Follows redirects
- * - Uses canonical/og:url when available
- * - Adds gentle retailer-specific nudges
- */
-async function normalizeRetailerUrl(raw?: string): Promise<string> {
-  let url = sanitizeUrl(raw);
-  if (!url) return "";
-
-  // Resolve short/affiliate links first
-  url = await followRedirects(url);
-
-  // Retailer nudges (don’t throw if they don’t apply)
-  try {
-    const u = new URL(url);
-    const host = u.hostname;
-
-    // Harvey Norman AU product pages are usually .../slug.html
-    if (host.includes("harveynorman.com.au") && !u.pathname.endsWith(".html")) {
-      u.pathname = u.pathname.replace(/\/$/, "") + ".html";
-      url = u.toString();
+    const canon =
+      html.match(/<link\s+rel=["']canonical["']\s+href=["']([^"']+)["']/i)?.[1] ||
+      html.match(/<meta\s+property=["']og:url["']\s+content=["']([^"']+)["']/i)?.[1];
+    if (canon) {
+      const absolute = new URL(canon, url).toString();
+      return sanitizeUrl(absolute);
     }
-
-    // The Good Guys AU — ensure we’re on the canonical domain
-    if (host.includes("thegoodguys.com.au")) {
-      if (!/^www\./i.test(host)) {
-        u.hostname = "www.thegoodguys.com.au";
-        url = u.toString();
-      }
-    }
-  } catch {}
-
-  // Load page HTML and pick canonical/og:url when present
-  const canon = await canonicalFromGet(url);
-  if (canon) url = sanitizeUrl(canon);
-
+  } catch {
+    // ignore and fall back
+  }
   return url;
 }
 
@@ -183,10 +120,16 @@ export async function GET(_req: NextRequest) {
       }))
       .filter((d) => d.id && d.title && d.url && d.price > 0 && d.originalPrice > 0);
 
-    // Normalize product URLs + fill missing OG images
+    // Gentle enhancements: try to canonicalize URL and fill OG image,
+    // but NEVER blank or drop a working value
     deals = await Promise.all(
       deals.map(async (d) => {
-        d.url = await normalizeRetailerUrl(d.url);
+        try {
+          const canon = await maybeCanonical(d.url);
+          if (canon) d.url = canon; // keep original if same/fails
+        } catch {
+          // keep original d.url
+        }
         if (!d.image) {
           const og = await fetchOgImage(d.url);
           if (og) d.image = og;
