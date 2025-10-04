@@ -75,6 +75,13 @@ function noCacheHeaders() {
   };
 }
 
+// tiny stable hash for fallback ids
+function makeId(input: string) {
+  let h = 5381;
+  for (let i = 0; i < input.length; i++) h = (h * 33) ^ input.charCodeAt(i);
+  return "d" + (h >>> 0).toString(36);
+}
+
 /* ------------------------ product image helper ------------------------ */
 
 const ogCache = new Map<string, string>();
@@ -151,14 +158,14 @@ function mapRows(rows: string[][]) {
   };
 
   const out = dataRows
-    .map((r, rowIdx) => {
+    .map((r) => {
       const title = col(r, "title");
       const retailer = col(r, "retailer");
       const url = sanitizeUrl(col(r, "url"));
       const image = col(r, "image");
       const price = toNum(col(r, "price"));
       const originalPriceRaw = toNum(col(r, "originalPrice"));
-      const originalPrice = originalPriceRaw > 0 ? originalPriceRaw : price; // don’t drop the row
+      const originalPrice = originalPriceRaw > 0 ? originalPriceRaw : price; // tolerate missing
       const category = col(r, "category") || "Electronics";
       const currency = (col(r, "currency") || "AUD").toUpperCase();
       const tags = toArr(col(r, "tags"));
@@ -167,16 +174,13 @@ function mapRows(rows: string[][]) {
       const endsAt = col(r, "endsAt") || undefined;
       const updatedAt = col(r, "updatedAt") || new Date().toISOString();
 
-      // build an id even if the sheet doesn't provide one
+      // build an id even if the sheet doesn't provide one (stable)
       const rawId = col(r, "id");
-      const id =
-        rawId && rawId.length
-          ? rawId
-          : `${retailer}-${title}-${url}`.replace(/\s+/g, "-").slice(0, 200);
+      const id = rawId && rawId.length ? rawId : makeId(`${retailer}::${title}::${url}`);
 
       // minimal validity (don’t be over-strict)
-      if (!title || !retailer || !url || price <= 0) {
-        // skip clearly broken rows but don't nuke everything
+      // 🔧 change here: we no longer require retailer to be non-empty
+      if (!title || !url || price <= 0) {
         return null;
       }
 
